@@ -1,3 +1,4 @@
+const { QuerySnapshot } = require("firebase-admin/firestore");
 const { connectDb } = require("./dbConnect");
 
 exports.createUser = (req, res) => {
@@ -44,6 +45,21 @@ exports.loginUser = (req, res) => {
   .where("email", "===", req.body.email.toLowerCase())
   .where('password', '===', req.body.password)
   .get()
-   .then()
+   .then(snapshot => {
+       if(snapshot.empty){  //bad login
+           res.status(401).send({
+               success: false,
+               message: 'Invalid email or password'
+            })
+              return 
+       }
+       //good login
+       res.send({
+           success: true,
+           message: "Login successful",
+           token: user
+       })
+   })
+
    .catch((err) => res.status(500).send(err));
 };
