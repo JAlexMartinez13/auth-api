@@ -1,9 +1,10 @@
+const jwt = require('jsonwebtoken')
 const { connectDb } = require("./dbConnect");
 
 exports.createUser = (req, res) => {
-  //first, Need Validation. (Email, Password)
+  // first, let's do some validation... (email, password)
   if (!req.body || !req.body.email || !req.body.password) {
-    //invalid request
+    // invalid request
     res.status(400).send({
       success: false,
       message: "Invalid request",
@@ -11,34 +12,41 @@ exports.createUser = (req, res) => {
     return;
   }
   const newUser = {
-    //Forcing shape/content of a new user.
     email: req.body.email.toLowerCase(),
     password: req.body.password,
     isAdmin: false,
-    useRole: 5,
+    userRole: 5,
   };
   const db = connectDb();
   db.collection("users")
     .add(newUser)
     .then((doc) => {
       const user = {
-        //this will become the payload.
+        // this will become the payload for our JWT
         id: doc.id,
         email: newUser.email,
         isAdmin: false,
-        useRole: 5,
+        userRole: 5,
       };
-      res.send(201).send({
+      const token = jwt.sign(user, 'DoNotShareYourSecret') //protect this secret
+      res.status(201).send({
         success: true,
         message: "Account created",
-        token: user, // add this to token later
+        token, //add this to token later
       });
     })
-    .catch((err) => res.status(500).send(err));
+    .catch((err) => {
+      res.status(500).send({
+        success: false,
+        message: err.message,
+        error: err,
+      });
+    });
 };
 
 exports.loginUser = (req, res) => {
   if (!req.body || !req.body.email || !req.body.password) {
+    // invalid request
     res.status(400).send({
       success: false,
       message: "Invalid request",
@@ -47,19 +55,63 @@ exports.loginUser = (req, res) => {
   }
   const db = connectDb();
   db.collection("users")
-    .where("email", "===", req.body.email.toLowerCase())
-    .where("password", "===", req.body.password)
+    .where("email", "==", req.body.email.toLowerCase())
+    .where("password", "==", req.body.password)
     .get()
     .then((snapshot) => {
       if (snapshot.empty) {
-        //bad login
+        // bad login
         res.status(401).send({
           success: false,
           message: "Invalid email or password",
         });
         return;
       }
-      //good login
+      // good login
+      const users = snapshot.docs.map((doc) => {
+        let user = doc.data();
+        user.id = doc.id;
+        user.password = undefined;
+        return user;
+      });
+      const token = jwt.sign(users[0], 'DoNotShareYourSecret')
+      res.send({
+        success: true,
+        message: "Login successful!!",
+        token,
+      });
+    })
+    .catch((err) => {
+      res.status(500).send({
+        success: false,
+        message: err.message,
+        error: err,
+      });
+    });
+};
+
+exports.getUsers = (req, res) => {
+  //first make sure the user sent authorization token
+if(!req.headers.authorization){
+  return res.status(403).send({
+    success: false,
+    message: 'No authorization token found'
+  })
+}
+
+  //TODO: Protect this route with JWT
+  const decode = jwt.verify(req.headers.authorization, 'DoNotShareYourSecret')
+  console.log('NEW REQUEST BY:', decode.email)
+  if(decode.userRole > 5){
+    return res.status(401).send({
+      success: false,
+      message: 'Not authorized'
+    })
+  }
+  const db = connectDb();
+  db.collection("users")
+    .get()
+    .then((snapshot) => {
       const users = snapshot.docs.map((doc) => {
         let user = doc.data();
         user.id = doc.id;
@@ -67,40 +119,16 @@ exports.loginUser = (req, res) => {
         return user;
       });
       res.send({
-        success: true,
-        message: "Login successful",
-        token: users[0],
-      });
+          success: true,
+          message: "Users returned",
+          users
+      })
     })
-
-    .catch((err) => res.status(500).send({
+    .catch((err) => {
+      res.status(500).send({
         success: false,
         message: err.message,
-        error: err
-    }))
+        error: err,
+      });
+    });
 };
- 
-
-exports.getUsers = (req,res) => {
-    const db = connectDb()
-    db.collection('users').get()
-     .then(snapshot =>{
-         const users = snapshot.docs.map(doc =>{
-             let user = doc.data()
-             user.id = doc.id
-             user.password = undefined
-             return user
-            })
-            res.send({
-                success: true,
-                message: 'Users returned',
-                users
-            })
-        })
-        .catch((err) => res.status(500).send({
-            success: false,
-            message: err.message,
-            error: err
-        }))
-    }
-            
